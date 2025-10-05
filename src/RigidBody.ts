@@ -51,6 +51,16 @@ export class RigidBody extends gfx.Mesh3
         
         // ADD YOUR CODE HERE
 
+        const acceleration = new gfx.Vector3(0, -9.8, 0);
+
+        // v_new = v_old + a * dt
+        const a_dt = gfx.Vector3.multiplyScalar(acceleration, deltaTime);
+        this.velocity.add(a_dt);
+
+        // p_new = p_old + v_new * dt
+        const v_dt = gfx.Vector3.multiplyScalar(this.velocity, deltaTime);
+        this.position.add(v_dt);
+
 
     }
 
