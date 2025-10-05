@@ -147,6 +147,29 @@ export class App extends gfx.GfxApp
         
         // ADD YOUR CODE
 
+        const r = this.holeRadius;
+
+        const minX = this.playArea.min.x + r;
+        const maxX = this.playArea.max.x - r;
+
+        const minZ = this.playArea.min.z + r;
+        const maxZ = this.playArea.max.z - r;
+
+
+        if(this.hole.position.x < minX){
+            this.hole.position.x = minX;
+        }
+        if(this.hole.position.x > maxX){
+            this.hole.position.x = maxX;
+        }
+
+        if(this.hole.position.z < minZ){
+            this.hole.position.z = minZ;
+        }
+        if(this.hole.position.z > maxZ){
+            this.hole.position.z = maxZ;
+        }
+
 
 
         // Update rigid body physics
@@ -222,6 +245,57 @@ export class App extends gfx.GfxApp
 
         // ADD YOUR CODE HERE
 
+        const restitution = 0.8;    // bounciness
+        const r = rb.getRadius();
+
+        // collide with floor only when not over the hole
+        if (rb.position.y < r) {
+            rb.position.y = r;          // resolve penetration
+            if (rb.velocity.y < 0) {
+                rb.velocity.y = -rb.velocity.y * restitution; // reflect normal
+                // tangential friction along floor
+                rb.velocity.x *= frictionSlowDown;
+                rb.velocity.z *= frictionSlowDown;
+            }
+        }
+
+        const minX = this.playArea.min.x + r;
+        const maxX = this.playArea.max.x - r;
+        const minZ = this.playArea.min.z + r;
+        const maxZ = this.playArea.max.z - r;
+
+        // Left wall (x = -10)
+        if (rb.position.x < minX) {
+            rb.position.x = minX;
+            if (rb.velocity.x < 0)
+                rb.velocity.x = -rb.velocity.x * restitution;
+            rb.velocity.z *= frictionSlowDown;
+        }
+
+        // Right wall (x = 10)
+        if (rb.position.x > maxX) {
+            rb.position.x = maxX;
+            if (rb.velocity.x > 0)
+                rb.velocity.x = -rb.velocity.x * restitution;
+            rb.velocity.z *= frictionSlowDown;
+        }
+
+        // Back wall (z = -16)
+        if (rb.position.z < minZ) {
+            rb.position.z = minZ;
+            if (rb.velocity.z < 0)
+                rb.velocity.z = -rb.velocity.z * restitution;
+            rb.velocity.x *= frictionSlowDown;
+        }
+
+        // Front wall (z = 8)
+        if (rb.position.z > maxZ) {
+            rb.position.z = maxZ;
+            if (rb.velocity.z > 0)
+                rb.velocity.z = -rb.velocity.z * restitution;
+            rb.velocity.x *= frictionSlowDown;
+        }
+
 
     }
 
@@ -237,6 +311,49 @@ export class App extends gfx.GfxApp
         // implement the equations, then you should seek help from a TA.
 
         // ADD YOUR CODE HERE
+
+        const e = 0.8; // restitution (bounciness)
+
+        const rSum = rb1.getRadius() + rb2.getRadius();
+
+        // delta = p2 - p1
+        const delta = gfx.Vector3.subtract(rb2.position, rb1.position);
+        let dist = delta.length();
+        if (dist === 0) { delta.set(1, 0, 0); dist = 1; } // avoid NaN 
+
+        // no collision
+        if (dist >= rSum) return;
+
+        // contact normal
+        const n = gfx.Vector3.multiplyScalar(delta, 1 / dist);
+
+        // 1) positional correction: push each out by half the overlap
+        const overlap = 0.5 * (rSum - dist);
+        rb1.position.add(gfx.Vector3.multiplyScalar(n, -overlap));
+        rb2.position.add(gfx.Vector3.multiplyScalar(n, +overlap));
+
+        // 2) impulse along the normal (equal masses)
+        const rv = gfx.Vector3.subtract(rb2.velocity, rb1.velocity);
+        const vAlongN = gfx.Vector3.dot(rv, n);
+        if (vAlongN > 0) return; // already separating
+
+        const j = -(1 + e) * vAlongN / 2; // (1/m1 + 1/m2) with m1=m2=1
+        const impulse = gfx.Vector3.multiplyScalar(n, j);
+        rb1.velocity.subtract(impulse);
+        rb2.velocity.add(impulse);
+
+        // 3) simple friction: damp the tangential component only
+        const v1n = gfx.Vector3.multiplyScalar(n, gfx.Vector3.dot(rb1.velocity, n));
+        const v2n = gfx.Vector3.multiplyScalar(n, gfx.Vector3.dot(rb2.velocity, n));
+
+        const v1t = gfx.Vector3.subtract(rb1.velocity, v1n);
+        const v2t = gfx.Vector3.subtract(rb2.velocity, v2n);
+
+        v1t.multiplyScalar(frictionSlowDown);
+        v2t.multiplyScalar(frictionSlowDown);
+
+        rb1.velocity.set(v1n.x + v1t.x, v1n.y + v1t.y, v1n.z + v1t.z);
+        rb2.velocity.set(v2n.x + v2t.x, v2n.y + v2t.y, v2n.z + v2t.z);
 
 
     }
@@ -326,6 +443,8 @@ export class App extends gfx.GfxApp
         else if(this.stage == 1)
         {
             this.setHoleRadius(0.5);
+            this.hole.position.x = 0;
+            this.hole.position.z = 4.4;
             
 
             // PART 5: CREATE YOUR OWN GAME
@@ -336,11 +455,84 @@ export class App extends gfx.GfxApp
             // Creativity is encouraged!
 
             // COMMENT OUT THIS CODE
-            this.text.text = 'Create your own game!';
+            this.text.text = 'ROUND 2!';
             this.text.updateTextureImage();
             this.textPlane.visible = true;
 
             // ADD YOUR CODE HERE
+
+            const rb1 = new RigidBody(this.sphere);
+            rb1.material = new gfx.GouraudMaterial();
+            rb1.material.setColor(gfx.Color.RED);
+            rb1.position.set(0, 0.25, 7.5);
+            rb1.setRadius(0.25);
+            rb1.velocity.set(0, 10, -4);
+            this.rigidBodies.add(rb1);
+    
+            const rb2 = new RigidBody(this.sphere);
+            rb2.material = new gfx.GouraudMaterial();
+            rb2.material.setColor(gfx.Color.GREEN);
+            rb2.position.set(-8, 1, -5);
+            rb2.setRadius(0.6);
+            rb2.velocity.set(9, 0, 0);
+            this.rigidBodies.add(rb2);
+    
+            const rb3 = new RigidBody(this.sphere);
+            rb3.material = new gfx.GouraudMaterial();
+            rb3.material.setColor(gfx.Color.BLUE);
+            rb3.position.set(8, 1, -5);
+            rb3.setRadius(1.1);
+            rb3.velocity.set(-9, 0, 0);
+            this.rigidBodies.add(rb3);
+    
+            const rb4 = new RigidBody(this.sphere);
+            rb4.material = new gfx.GouraudMaterial();
+            rb4.material.setColor(gfx.Color.YELLOW);
+            rb4.position.set(0, 0.25, -12);
+            rb4.setRadius(0.4);
+            rb4.velocity.set(15, 10, -30);
+            this.rigidBodies.add(rb4);
+
+            
+            const rb5 = new RigidBody(this.sphere);
+            rb5.material = new gfx.GouraudMaterial();
+            rb5.material.setColor(gfx.Color.PURPLE);
+            rb5.position.set(0, 1, 9);
+            rb5.setRadius(0.9);
+            rb5.velocity.set(0, 10, -4);
+            this.rigidBodies.add(rb5);
+    
+            const rb6 = new RigidBody(this.sphere);
+            rb6.material = new gfx.GouraudMaterial();
+            rb6.material.setColor(gfx.Color.CYAN);
+            rb6.position.set(0, 1, 4.4);
+            rb6.setRadius(0.3);
+            rb6.velocity.set(1, 0, 0);
+            this.rigidBodies.add(rb6);
+    
+            const rb7 = new RigidBody(this.sphere);
+            rb7.material = new gfx.GouraudMaterial();
+            rb7.material.setColor(gfx.Color.BLACK);
+            rb7.position.set(8, 8, -2);
+            rb7.setRadius(1.5);
+            rb7.velocity.set(-9, 0, 0);
+            this.rigidBodies.add(rb7);
+    
+            const rb8 = new RigidBody(this.sphere);
+            rb8.material = new gfx.GouraudMaterial();
+            rb8.material.setColor(gfx.Color.WHITE);
+            rb8.position.set(4, 0.3, -2);
+            rb8.setRadius(1);
+            rb8.velocity.set(15, 10, -15);
+            this.rigidBodies.add(rb8);
+
+            const rb9 = new RigidBody(this.sphere);
+            rb9.material = new gfx.GouraudMaterial();
+            rb9.material.setColor(gfx.Color.BLACK);
+            rb9.position.set(0, 0.25, -20);
+            rb9.setRadius(0.5);
+            rb9.velocity.set(15, 10, -30);
+            this.rigidBodies.add(rb9);
 
 
         }
